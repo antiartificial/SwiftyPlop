@@ -160,7 +160,10 @@ struct ContentView: View {
                             self.image = image
                         }
                         self.backgroundColor = self.getDominantColor(image: image)
-                        self.topColors = self.extractTopColors(image: image)
+                        self.extractTopColorsAsync(image: image) { colors in
+                            self.topColors = colors
+                            print("Top colors: \(colors)") // Debug print to check if colors are correctly computed
+                        }
                         audioManager.playSound("plop")
                     }
                 }
@@ -203,60 +206,30 @@ struct ContentView: View {
         return Color(red: red, green: green, blue: blue)
     }
 
-    private func extractTopColors(image: NSImage) -> [(color: Color, hex: String, rgba: String)] {
-        // Use k-means clustering to get the top 5 colors from the image
-        guard let imageData = image.tiffRepresentation,
-              let ciImage = CIImage(data: imageData) else {
-            return []
-        }
-        
-        let context = CIContext()
-        let kMeansFilter = CIFilter(name: "CIKMeans", parameters: [
-            "inputImage": ciImage,
-            "inputCount": 5
-        ])!
-        
-        guard let outputImage = kMeansFilter.outputImage,
-              let bitmap = context.createCGImage(outputImage, from: outputImage.extent) else {
-            return []
-        }
-        
-        let width = bitmap.width
-        let height = bitmap.height
-        let data = UnsafeMutablePointer<UInt8>.allocate(capacity: width * height * 4)
-        
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
-        
-        let context2 = CGContext(data: data,
-                                 width: width,
-                                 height: height,
-                                 bitsPerComponent: 8,
-                                 bytesPerRow: 4 * width,
-                                 space: colorSpace,
-                                 bitmapInfo: bitmapInfo.rawValue)
-        
-        context2?.draw(bitmap, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
-        
-        var colors: [(color: Color, hex: String, rgba: String)] = []
-        
-        for i in 0..<5 {
-            let offset = i * 4
-            let r = data[offset]
-            let g = data[offset + 1]
-            let b = data[offset + 2]
-            let a = data[offset + 3]
+    private func extractTopColorsAsync(image: NSImage, completion: @escaping ([(color: Color, hex: String, rgba: String)]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let imageData = image.tiffRepresentation,
+                  let ciImage = CIImage(data: imageData) else {
+                DispatchQueue.main.async {
+                    completion([])
+                }
+                return
+            }
             
-            let color = Color(red: Double(r) / 255.0, green: Double(g) / 255.0, blue: Double(b) / 255.0, opacity: Double(a) / 255.0)
-            let hex = String(format: "#%02X%02X%02X", r, g, b)
-            let rgba = String(format: "rgba(%d, %d, %d, %.2f)", r, g, b, Double(a) / 255.0)
+            let bitmap = ciImage.toBitmap()
+            let colors = kMeansCluster(colors: bitmap, k: 5)
             
-            colors.append((color: color, hex: hex, rgba: rgba))
+            let result = colors.map { color in
+                let (r, g, b) = (color.red, color.green, color.blue)
+                let hex = String(format: "#%02X%02X%02X", r, g, b)
+                let rgba = String(format: "rgba(%d, %d, %d, %.2f)", r, g, b, color.alpha)
+                return (color: Color(red: Double(r) / 255.0, green: Double(g) / 255.0, blue: Double(b) / 255.0, opacity: color.alpha), hex: hex, rgba: rgba)
+            }
+            
+            DispatchQueue.main.async {
+                completion(result)
+            }
         }
-        
-        data.deallocate()
-        
-        return colors
     }
 
     private func copyToClipboard(_ text: String) {
@@ -264,6 +237,73 @@ struct ContentView: View {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
     }
+}
+
+extension CIImage {
+    func toBitmap() -> [(red: Int, green: Int, blue: Int, alpha: Double)] {
+        let context = CIContext()
+        let extent = self.extent
+        guard let cgImage = context.createCGImage(self, from: extent) else { return [] }
+        
+        let width = Int(extent.width)
+        let height = Int(extent.height)
+        var bitmapData = [UInt8](repeating: 0, count: width * height * 4)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapContext = CGContext(data: &bitmapData, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        
+        bitmapContext?.draw(cgImage, in: extent)
+        
+        var bitmap: [(red: Int, green: Int, blue: Int, alpha: Double)] = []
+        
+        for x in 0..<width {
+            for y in 0..<height {
+                let offset = 4 * (x + y * width)
+                let r = Int(bitmapData[offset])
+                let g = Int(bitmapData[offset + 1])
+                let b = Int(bitmapData[offset + 2])
+                let a = Double(bitmapData[offset + 3]) / 255.0
+                bitmap.append((red: r, green: g, blue: b, alpha: a))
+            }
+        }
+        
+        return bitmap
+    }
+}
+
+func kMeansCluster(colors: [(red: Int, green: Int, blue: Int, alpha: Double)], k: Int) -> [(red: Int, green: Int, blue: Int, alpha: Double)] {
+    var centroids = Array(colors.prefix(k))
+    var clusters = Array(repeating: [(red: Int, green: Int, blue: Int, alpha: Double)](), count: k)
+    
+    var didChange = true
+    while didChange {
+        clusters = Array(repeating: [(red: Int, green: Int, blue: Int, alpha: Double)](), count: k)
+        
+        for color in colors {
+            let distances = centroids.map { centroid in
+                pow(Double(color.red - centroid.red), 2) + pow(Double(color.green - centroid.green), 2) + pow(Double(color.blue - centroid.blue), 2)
+            }
+            let closestCentroidIndex = distances.enumerated().min(by: { $0.element < $1.element })!.offset
+            clusters[closestCentroidIndex].append(color)
+        }
+        
+        let newCentroids = clusters.map { cluster -> (red: Int, green: Int, blue: Int, alpha: Double) in
+            if cluster.isEmpty {
+                // If the cluster is empty, reinitialize the centroid with a random color from the original list
+                return colors[Int.random(in: 0..<colors.count)]
+            } else {
+                let count = cluster.count
+                let sum = cluster.reduce((red: 0, green: 0, blue: 0, alpha: 0.0)) { sum, color in
+                    (red: sum.red + color.red, green: sum.green + color.green, blue: sum.blue + color.blue, alpha: sum.alpha + color.alpha)
+                }
+                return (red: sum.red / count, green: sum.green / count, blue: sum.blue / count, alpha: sum.alpha / Double(count))
+            }
+        }
+        
+        didChange = !zip(centroids, newCentroids).allSatisfy { $0 == $1 }
+        centroids = newCentroids
+    }
+    
+    return centroids
 }
 
 struct VisualEffectView: NSViewRepresentable {
