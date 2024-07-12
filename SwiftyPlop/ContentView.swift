@@ -35,6 +35,7 @@ struct ContentView: View {
     @State private var isHovered: Bool = false
     @State private var hoveredIndex: Int? = nil
     @State private var selectedIndex: Int? = nil
+    @State private var isProcessing: Bool = false
     private var audioManager = AudioManager()
 
     var body: some View {
@@ -81,47 +82,55 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Details")
                         .font(.largeTitle)
-                    ForEach(Array(topColors.enumerated()), id: \.offset) { index, colorInfo in
-                        HStack {
-                            Circle()
-                                .fill(colorInfo.color)
-                                .frame(width: 30, height: 30)
-                                .shadow(radius: 5)
-                            VStack(alignment: .leading) {
-                                Text("Hex: \(colorInfo.hex)")
-                                    .foregroundColor(.white)
-                                    .onTapGesture {
-                                        copyToClipboard(colorInfo.hex)
-                                        selectedIndex = index
-                                    }
-                                Text("RGBA: \(colorInfo.rgba)")
-                                    .foregroundColor(.white)
-                                    .onTapGesture {
-                                        copyToClipboard(colorInfo.rgba)
-                                        selectedIndex = index
-                                    }
+                    if isProcessing {
+                        ProgressCircle()
+                            .frame(width: 50, height: 50)
+                            .transition(.opacity)
+                    } else {
+                        ForEach(Array(topColors.enumerated()), id: \.offset) { index, colorInfo in
+                            HStack {
+                                Circle()
+                                    .fill(colorInfo.color)
+                                    .frame(width: 30, height: 30)
+                                    .shadow(radius: 5)
+                                VStack(alignment: .leading) {
+                                    Text("Hex: \(colorInfo.hex)")
+                                        .foregroundColor(.white)
+                                        .onTapGesture {
+                                            copyToClipboard(colorInfo.hex)
+                                            selectedIndex = index
+                                        }
+                                    Text("RGBA: \(colorInfo.rgba)")
+                                        .foregroundColor(.white)
+                                        .onTapGesture {
+                                            copyToClipboard(colorInfo.rgba)
+                                            selectedIndex = index
+                                        }
+                                }
                             }
-                        }
-                        .padding()
-                        .background(hoveredIndex == index ? Color.black.opacity(0.2) : Color.black.opacity(0.1))
-                        .cornerRadius(10)
-                        .scaleEffect(hoveredIndex == index ? 1.025 : 1.0)
-                        .animation(.easeInOut(duration: 0.3), value: hoveredIndex == index)
-                        .opacity(hoveredIndex == index || selectedIndex == index ? 1.0 : 1.0)
-                        .animation(.easeInOut(duration: 0.3), value: hoveredIndex == index || selectedIndex == index)
-                        .onHover { hovering in
-                            hoveredIndex = hovering ? index : nil
-                            audioManager.playSound("detail")
-                        }
-                        .onAppear {
-                            withAnimation(.easeInOut(duration: 2.5).delay(Double(index) * 0.5)) {
-                                hoveredIndex = index
+                            .padding()
+                            .background(hoveredIndex == index ? Color.black.opacity(0.2) : Color.black.opacity(0.1))
+                            .cornerRadius(10)
+                            .scaleEffect(hoveredIndex == index ? 1.025 : 1.0)
+                            .animation(.easeInOut(duration: 0.3), value: hoveredIndex == index)
+                            .opacity(hoveredIndex == index || selectedIndex == index ? 1.0 : 1.0)
+                            .animation(.easeInOut(duration: 0.3), value: hoveredIndex == index || selectedIndex == index)
+                            .onHover { hovering in
+                                hoveredIndex = hovering ? index : nil
+                                audioManager.playSound("detail")
+                            }
+                            .onAppear {
+                                withAnimation(.easeInOut(duration: 2.5).delay(Double(index) * 0.5)) {
+                                    hoveredIndex = index
+                                }
                             }
                         }
                     }
                 }
                 .frame(width: geometry.size.width / 3, height: geometry.size.height)
                 .padding()
+                .opacity(isProcessing ? 0.5 : 1.0)
+                .animation(.easeInOut(duration: 0.3), value: isProcessing)
             }
             .background(VisualEffectView(material: .underWindowBackground, blendingMode: .behindWindow)
                             .background(backgroundColor.opacity(0.5)))
@@ -152,20 +161,23 @@ struct ContentView: View {
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         if let item = providers.first {
             item.loadItem(forTypeIdentifier: "public.file-url", options: nil) { (urlData, error) in
-                DispatchQueue.main.async {
-                    if let urlData = urlData as? Data,
-                       let url = URL(dataRepresentation: urlData, relativeTo: nil),
-                       let image = NSImage(contentsOf: url) {
+                if let urlData = urlData as? Data,
+                   let url = URL(dataRepresentation: urlData, relativeTo: nil),
+                   let image = NSImage(contentsOf: url) {
+                    DispatchQueue.main.async {
                         withAnimation(.interpolatingSpring(stiffness: 70, damping: 7)) {
                             self.image = image
                         }
                         self.backgroundColor = self.getDominantColor(image: image)
-                        self.extractTopColorsAsync(image: image) { colors in
-                            self.topColors = colors
-                            print("Top colors: \(colors)") // Debug print to check if colors are correctly computed
-                        }
-                        audioManager.playSound("plop")
                     }
+                    self.isProcessing = true
+                    self.extractTopColorsAsync(image: image) { colors in
+                        DispatchQueue.main.async {
+                            self.topColors = colors
+                            self.isProcessing = false
+                        }
+                    }
+                    audioManager.playSound("plop")
                 }
             }
             return true
@@ -206,9 +218,27 @@ struct ContentView: View {
         return Color(red: red, green: green, blue: blue)
     }
 
+    private func resizeImageIfNeeded(image: NSImage, maxDimension: CGFloat) -> NSImage {
+        let longestSide = max(image.size.width, image.size.height)
+        guard longestSide > maxDimension else { return image }
+        
+        let scale = maxDimension / longestSide
+        let newSize = NSSize(width: image.size.width * scale, height: image.size.height * scale)
+        
+        let resizedImage = NSImage(size: newSize)
+        resizedImage.lockFocus()
+        image.draw(in: NSRect(origin: .zero, size: newSize),
+                   from: NSRect(origin: .zero, size: image.size),
+                   operation: .copy,
+                   fraction: 1.0)
+        resizedImage.unlockFocus()
+        return resizedImage
+    }
+
     private func extractTopColorsAsync(image: NSImage, completion: @escaping ([(color: Color, hex: String, rgba: String)]) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
-            guard let imageData = image.tiffRepresentation,
+            let resizedImage = self.resizeImageIfNeeded(image: image, maxDimension: 300)
+            guard let imageData = resizedImage.tiffRepresentation,
                   let ciImage = CIImage(data: imageData) else {
                 DispatchQueue.main.async {
                     completion([])
@@ -226,9 +256,7 @@ struct ContentView: View {
                 return (color: Color(red: Double(r) / 255.0, green: Double(g) / 255.0, blue: Double(b) / 255.0, opacity: color.alpha), hex: hex, rgba: rgba)
             }
             
-            DispatchQueue.main.async {
-                completion(result)
-            }
+            completion(result)
         }
     }
 
@@ -236,6 +264,23 @@ struct ContentView: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+}
+
+struct ProgressCircle: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .trim(from: 0, to: 0.7)
+                .stroke(Color.blue, lineWidth: 5)
+                .rotationEffect(Angle(degrees: isAnimating ? 360 : 0))
+                .animation(Animation.linear(duration: 1).repeatForever(autoreverses: false), value: isAnimating)
+                .onAppear {
+                    self.isAnimating = true
+                }
+        }
     }
 }
 
@@ -271,7 +316,7 @@ extension CIImage {
 }
 
 func kMeansCluster(colors: [(red: Int, green: Int, blue: Int, alpha: Double)], k: Int) -> [(red: Int, green: Int, blue: Int, alpha: Double)] {
-    var centroids = Array(colors.prefix(k))
+    var centroids = kMeansPlusPlusInit(colors: colors, k: k)
     var clusters = Array(repeating: [(red: Int, green: Int, blue: Int, alpha: Double)](), count: k)
     
     var didChange = true
@@ -280,7 +325,9 @@ func kMeansCluster(colors: [(red: Int, green: Int, blue: Int, alpha: Double)], k
         
         for color in colors {
             let distances = centroids.map { centroid in
-                pow(Double(color.red - centroid.red), 2) + pow(Double(color.green - centroid.green), 2) + pow(Double(color.blue - centroid.blue), 2)
+                pow(Double(color.red - centroid.red), 2) +
+                pow(Double(color.green - centroid.green), 2) +
+                pow(Double(color.blue - centroid.blue), 2)
             }
             let closestCentroidIndex = distances.enumerated().min(by: { $0.element < $1.element })!.offset
             clusters[closestCentroidIndex].append(color)
@@ -301,6 +348,42 @@ func kMeansCluster(colors: [(red: Int, green: Int, blue: Int, alpha: Double)], k
         
         didChange = !zip(centroids, newCentroids).allSatisfy { $0 == $1 }
         centroids = newCentroids
+    }
+    
+    return centroids
+}
+
+func kMeansPlusPlusInit(colors: [(red: Int, green: Int, blue: Int, alpha: Double)], k: Int) -> [(red: Int, green: Int, blue: Int, alpha: Double)] {
+    var centroids: [(red: Int, green: Int, blue: Int, alpha: Double)] = []
+    
+    // Step 1: Randomly select the first centroid
+    centroids.append(colors[Int.random(in: 0..<colors.count)])
+    
+    while centroids.count < k {
+        var distances = [Double]()
+        for color in colors {
+            let minDistance = centroids.map { centroid in
+                pow(Double(color.red - centroid.red), 2) +
+                pow(Double(color.green - centroid.green), 2) +
+                pow(Double(color.blue - centroid.blue), 2)
+            }.min()!
+            distances.append(minDistance)
+        }
+        
+        let totalDistance = distances.reduce(0, +)
+        let probabilities = distances.map { $0 / totalDistance }
+        
+        let cumulativeProbabilities = probabilities.reduce(into: [Double]()) { result, probability in
+            result.append((result.last ?? 0) + probability)
+        }
+        
+        let randomValue = Double.random(in: 0..<1)
+        for (index, cumulativeProbability) in cumulativeProbabilities.enumerated() {
+            if randomValue < cumulativeProbability {
+                centroids.append(colors[index])
+                break
+            }
+        }
     }
     
     return centroids
