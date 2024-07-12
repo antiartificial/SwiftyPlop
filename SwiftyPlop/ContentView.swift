@@ -3,6 +3,31 @@ import AVFoundation
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
+class AudioManager: NSObject, AVAudioPlayerDelegate {
+    var audioPlayers: [AVAudioPlayer] = []
+
+    func playSound(_ name: String) {
+        guard let soundURL = Bundle.main.url(forResource: name, withExtension: "mp3") else {
+            print("Sound file not found: \(name).mp3")
+            return
+        }
+        do {
+            let player = try AVAudioPlayer(contentsOf: soundURL)
+            player.delegate = self
+            player.play()
+            audioPlayers.append(player)
+        } catch {
+            print("Failed to play sound: \(error.localizedDescription)")
+        }
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        if let index = audioPlayers.firstIndex(of: player) {
+            audioPlayers.remove(at: index)
+        }
+    }
+}
+
 struct ContentView: View {
     @State private var image: NSImage? = nil
     @State private var backgroundColor: Color = .white
@@ -10,6 +35,7 @@ struct ContentView: View {
     @State private var isHovered: Bool = false
     @State private var hoveredIndex: Int? = nil
     @State private var selectedIndex: Int? = nil
+    private var audioManager = AudioManager()
 
     var body: some View {
         GeometryReader { geometry in
@@ -85,6 +111,7 @@ struct ContentView: View {
                         .animation(.easeInOut(duration: 0.3), value: hoveredIndex == index || selectedIndex == index)
                         .onHover { hovering in
                             hoveredIndex = hovering ? index : nil
+                            audioManager.playSound("detail")
                         }
                         .onAppear {
                             withAnimation(.easeInOut(duration: 2.5).delay(Double(index) * 0.5)) {
@@ -134,7 +161,7 @@ struct ContentView: View {
                         }
                         self.backgroundColor = self.getDominantColor(image: image)
                         self.topColors = self.extractTopColors(image: image)
-                        self.playSound()
+                        audioManager.playSound("plop")
                     }
                 }
             }
@@ -232,24 +259,12 @@ struct ContentView: View {
         return colors
     }
 
-    private func playSound() {
-        guard let soundURL = Bundle.main.url(forResource: "plop", withExtension: "mp3") else { return }
-        do {
-            player = try AVAudioPlayer(contentsOf: soundURL)
-            player?.play()
-        } catch {
-            print("Failed to play sound: \(error.localizedDescription)")
-        }
-    }
-
     private func copyToClipboard(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
     }
 }
-
-private var player: AVAudioPlayer?
 
 struct VisualEffectView: NSViewRepresentable {
     var material: NSVisualEffectView.Material

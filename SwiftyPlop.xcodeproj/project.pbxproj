@@ -11,6 +11,9 @@
 		6AB1AA8C2C40D4DF00C6209D /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AB1AA8B2C40D4DF00C6209D /* ContentView.swift */; };
 		6AB1AA8E2C40D4E000C6209D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6AB1AA8D2C40D4E000C6209D /* Assets.xcassets */; };
 		6AB1AA912C40D4E000C6209D /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6AB1AA902C40D4E000C6209D /* Preview Assets.xcassets */; };
+		6AB1AA992C40E9C600C6209D /* plop1.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 6AB1AA982C40E9C600C6209D /* plop1.mp3 */; };
+		6AB1AA9B2C40EA9D00C6209D /* detail.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 6AB1AA9A2C40EA9D00C6209D /* detail.mp3 */; };
+		6AB1AA9D2C40ED6E00C6209D /* plop.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 6AB1AA9C2C40ED6E00C6209D /* plop.mp3 */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +23,9 @@
 		6AB1AA8D2C40D4E000C6209D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6AB1AA902C40D4E000C6209D /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		6AB1AA922C40D4E000C6209D /* SwiftyPlop.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SwiftyPlop.entitlements; sourceTree = "<group>"; };
+		6AB1AA982C40E9C600C6209D /* plop1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = plop1.mp3; sourceTree = "<group>"; };
+		6AB1AA9A2C40EA9D00C6209D /* detail.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = detail.mp3; sourceTree = "<group>"; };
+		6AB1AA9C2C40ED6E00C6209D /* plop.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = plop.mp3; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +58,9 @@
 		6AB1AA882C40D4DF00C6209D /* SwiftyPlop */ = {
 			isa = PBXGroup;
 			children = (
+				6AB1AA9C2C40ED6E00C6209D /* plop.mp3 */,
+				6AB1AA9A2C40EA9D00C6209D /* detail.mp3 */,
+				6AB1AA982C40E9C600C6209D /* plop1.mp3 */,
 				6AB1AA892C40D4DF00C6209D /* SwiftyPlopApp.swift */,
 				6AB1AA8B2C40D4DF00C6209D /* ContentView.swift */,
 				6AB1AA8D2C40D4E000C6209D /* Assets.xcassets */,
@@ -127,8 +136,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6AB1AA992C40E9C600C6209D /* plop1.mp3 in Resources */,
 				6AB1AA912C40D4E000C6209D /* Preview Assets.xcassets in Resources */,
+				6AB1AA9B2C40EA9D00C6209D /* detail.mp3 in Resources */,
 				6AB1AA8E2C40D4E000C6209D /* Assets.xcassets in Resources */,
+				6AB1AA9D2C40ED6E00C6209D /* plop.mp3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
